@@ -11,7 +11,11 @@
 
 static int init_tcit(stpm2_context *ctx)
 {
-	/* TODO: make this a compile time option probably */
+	/*
+	 * Use tabrmd for now, which is the access broker, so this should work
+	 * with the simulator as well as the real device over SPI as long as an
+	 * access broker is properly running.
+	 */
 	const char *tcti_so = "libtss2-tcti-tabrmd.so.0";
 
 	ctx->tcti_so_handle = dlopen(tcti_so, RTLD_LAZY);
