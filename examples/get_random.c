@@ -26,5 +26,11 @@ int main(int argc, char *argv[])
 
 	printf("\n");
 
+	ret = stpm2_free(&ctx);
+	if (ret < 0) {
+		printf("stpm2_free() failed\n");
+		return 1;
+	}
+
 	return 0;
 }

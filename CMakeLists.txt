@@ -9,3 +9,5 @@ target_link_libraries(stpm2 tss2-sys dl)
 add_executable(example_get_random examples/get_random.c)
 target_link_libraries(example_get_random stpm2)
 
+add_executable(example_hash examples/hash.c)
+target_link_libraries(example_hash stpm2)

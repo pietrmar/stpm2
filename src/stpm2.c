@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <dlfcn.h>
 
 #include <tss2/tss2_sys.h>
@@ -91,6 +92,7 @@ int stpm2_free(stpm2_context *ctx)
 
 int stpm2_get_random(stpm2_context *ctx, uint8_t *buf, size_t size)
 {
+	/*TODO: check size of output buffer, the TPM2 can only deliver a limited number of random bytes on one call. */
 	TPM2B_DIGEST random_bytes = TPM2B_TYPE_INIT(TPM2B_DIGEST, buffer);
 
 	TSS2_RC ret = TSS2_RETRY_EXP(Tss2_Sys_GetRandom(ctx->sys_ctx, NULL, size, &random_bytes, NULL));
@@ -106,3 +108,42 @@ int stpm2_get_random(stpm2_context *ctx, uint8_t *buf, size_t size)
 	return 0;
 }
 
+static TPMI_ALG_HASH stpm2_to_tpmi_alg(stpm2_hash_alg alg)
+{
+	switch(alg) {
+	case STPM2_HASH_ALG_SHA1:
+		return TPM2_ALG_SHA1;
+	case STPM2_HASH_ALG_SHA256:
+		return TPM2_ALG_SHA256;
+	case STPM2_HASH_ALG_SHA384:
+		return TPM2_ALG_SHA384;
+	case STPM2_HASH_ALG_SHA512:
+		return TPM2_ALG_SHA512;
+	}
+}
+
+int stpm2_hash(stpm2_context *ctx, stpm2_hash_alg alg, const uint8_t *buf, size_t size, uint8_t *outbuf, size_t outsize)
+{
+	/* TODO: handle input which is larger than TPM2_MAX_DIGEST_BUFFER */
+	if (size > TPM2_MAX_DIGEST_BUFFER) {
+		return -1;
+	}
+
+        TPM2B_MAX_BUFFER buffer = { .size = size };
+	TPM2B_DIGEST result = TPM2B_TYPE_INIT(TPM2B_DIGEST, buffer);
+	TPMT_TK_HASHCHECK validation;
+
+	memcpy(buffer.buffer, buf, size);
+
+	TSS2_RC ret = TSS2_RETRY_EXP(Tss2_Sys_Hash(ctx->sys_ctx, NULL, &buffer, stpm2_to_tpmi_alg(alg), TPM2_RH_OWNER, &result, &validation, NULL));
+	if (ret != TPM2_RC_SUCCESS) {
+		return -1;
+	}
+
+	int i;
+	for (i = 0; i < outsize && i < result.size; i++) {
+		outbuf[i] = result.buffer[i];
+	}
+
+	return i;
+}
