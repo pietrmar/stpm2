@@ -147,3 +147,77 @@ int stpm2_hash(stpm2_context *ctx, stpm2_hash_alg alg, const uint8_t *buf, size_
 
 	return i;
 }
+
+/*
+ * This creates a primary key with the default settings that match tpm2_createprimary,
+ * they key is stored inside the stpm2_context struct
+ */
+int stpm2_create_primary(stpm2_context *ctx)
+{
+	TSS2L_SYS_AUTH_COMMAND sessions_cmd = {
+		.count = 1,
+		.auths = {{ .sessionHandle = TPM2_RS_PW }},
+	};
+
+	TSS2L_SYS_AUTH_RESPONSE sessions_rsp = {
+		.count = 0,
+		.auths = { 0 },
+	};
+
+	TPM2B_SENSITIVE_CREATE	in_sensitive	= { 0 };
+	TPM2B_DATA		outside_info	= { 0 };
+	TPM2B_CREATION_DATA	creation_data	= { 0 };
+	TPM2B_DIGEST		creation_hash	= TPM2B_TYPE_INIT(TPM2B_DIGEST, buffer);
+	TPM2B_PUBLIC		in_public	= { 0 };
+	TPMT_TK_CREATION	creation_ticket	= { 0 };
+	TPM2B_NAME		name		= TPM2B_TYPE_INIT(TPM2B_NAME, name);
+	TPML_PCR_SELECTION	creation_pcr	= { 0 };
+	TPM2B_PUBLIC		out_public	= { 0 };
+	TPM2_HANDLE		handle_parent	= 0;
+
+	in_public.publicArea.type = TPM2_ALG_RSA;
+	in_public.publicArea.nameAlg = TPM2_ALG_SHA256;
+	in_public.publicArea.objectAttributes |= TPMA_OBJECT_RESTRICTED;
+	in_public.publicArea.objectAttributes |= TPMA_OBJECT_USERWITHAUTH;
+	in_public.publicArea.objectAttributes |= TPMA_OBJECT_DECRYPT;
+	in_public.publicArea.objectAttributes |= TPMA_OBJECT_FIXEDTPM;
+	in_public.publicArea.objectAttributes |= TPMA_OBJECT_FIXEDPARENT;
+	in_public.publicArea.objectAttributes |= TPMA_OBJECT_SENSITIVEDATAORIGIN;
+	in_public.publicArea.parameters.rsaDetail.symmetric.algorithm = TPM2_ALG_AES;
+	in_public.publicArea.parameters.rsaDetail.symmetric.keyBits.aes = 256;
+	in_public.publicArea.parameters.rsaDetail.symmetric.mode.aes = TPM2_ALG_NULL;
+	in_public.publicArea.parameters.rsaDetail.scheme.scheme = TPM2_ALG_NULL;
+	in_public.publicArea.parameters.rsaDetail.keyBits = 2048;
+
+	TSS2_RC ret;
+	ret = Tss2_Sys_CreatePrimary(ctx->sys_ctx,
+					TPM2_RH_OWNER,
+					&sessions_cmd,
+					&in_sensitive,
+					&in_public,
+					&outside_info,
+					&creation_pcr,
+					&ctx->primary_handle,
+					&out_public,
+					&creation_data,
+					&creation_hash,
+					&creation_ticket,
+					&name,
+					&sessions_rsp);
+
+	if (ret != TPM2_RC_SUCCESS) {
+		ctx->primary_handle = 0;
+		return -1;
+	}
+
+	printf("Created primary key:\n");
+	printf("\thandle: 0x%X\n", ctx->primary_handle);
+
+	printf("\trsa public portion: ");
+	for (int i = 0; i < out_public.publicArea.unique.rsa.size; i++) {
+		printf("%02x", out_public.publicArea.unique.rsa.buffer[i]);
+	}
+	printf("\n");
+
+	return 0;
+}
