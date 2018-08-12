@@ -107,7 +107,6 @@ int stpm2_init(stpm2_context *ctx)
 
 	/* Allocate system ctx */
 	size_t ctx_size = Tss2_Sys_GetContextSize(0);
-	log_debug("ctx_size is %zu", ctx_size);
 
 	ctx->sys_ctx = (TSS2_SYS_CONTEXT *)calloc(1, ctx_size);
 	if (ctx->sys_ctx == NULL) {
