@@ -22,7 +22,7 @@ static int init_tcit(stpm2_context *ctx)
 	 * with the simulator as well as the real device over SPI as long as an
 	 * access broker is properly running.
 	 */
-	const char *tcti_so = "libtss2-tcti-tabrmd.so.0";
+	const char *tcti_so = "libtss2-tcti-mssim.so.0";
 
 	ctx->tcti_so_handle = dlopen(tcti_so, RTLD_LAZY);
 	if (!ctx->tcti_so_handle) {
