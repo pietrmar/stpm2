@@ -62,6 +62,38 @@ static int init_tcit(stpm2_context *ctx)
 	return 0;
 }
 
+/* Based on access_broker_flush_all_unlocked() from https://github.com/tpm2-software/tpm2-abrmd.git */
+static int stpm2_flush_context_range(stpm2_context *ctx, TPM2_RH first, TPM2_RH last)
+{
+	TSS2_RC ret;
+
+	TPMS_CAPABILITY_DATA capability_data = { 0 };
+	TPM2_HANDLE handle;
+	size_t i;
+
+	ret = Tss2_Sys_GetCapability(ctx->sys_ctx,
+					NULL,
+					TPM2_CAP_HANDLES,
+					first,
+					last - first,
+					NULL,
+					&capability_data,
+					NULL);
+	if (ret != TSS2_RC_SUCCESS) {
+		log_error("Tss2_Sys_GetCapability() failed with %s", tpm2_error_str(ret));
+		return -1;
+	}
+
+	for (i = 0; i < capability_data.data.handles.count; i++) {
+		handle = capability_data.data.handles.handle[i];
+		ret = Tss2_Sys_FlushContext(ctx->sys_ctx, handle);
+		if (ret != TSS2_RC_SUCCESS) {
+			log_error("Tss2_Sys_FlushContext() failed with %s", tpm2_error_str(ret));
+			return -1;
+		}
+	}
+}
+
 int stpm2_init(stpm2_context *ctx)
 {
 	log_trace("Entering %s", __func__);
@@ -91,6 +123,28 @@ int stpm2_init(stpm2_context *ctx)
 	ret = Tss2_Sys_Initialize(ctx->sys_ctx, ctx_size, ctx->tcti_ctx, &abi_version);
 	if (ret != TPM2_RC_SUCCESS) {
 		log_error("Tss2_Sys_Initialize() failed with %s", tpm2_error_str(ret));
+		return -1;
+	}
+
+	ret = TSS2_RETRY_EXP(Tss2_Sys_Startup(ctx->sys_ctx, TPM2_SU_CLEAR));
+	if (ret != TPM2_RC_SUCCESS && ret != TPM2_RC_INITIALIZE) {
+		log_error("Tss2_Sys_Startup() failed with %s", tpm2_error_str(ret));
+		return -1;
+	}
+
+	/* Flush all objects to have a clean state */
+	if (stpm2_flush_context_range(ctx, TPM2_ACTIVE_SESSION_FIRST, TPM2_ACTIVE_SESSION_LAST) < 0) {
+		log_error("Failed to flush active sessions");
+		return -1;
+	}
+
+	if (stpm2_flush_context_range(ctx, TPM2_LOADED_SESSION_FIRST, TPM2_LOADED_SESSION_LAST) < 0) {
+		log_error("Failed to flush loaded sessions");
+		return -1;
+	}
+
+	if (stpm2_flush_context_range(ctx, TPM2_TRANSIENT_FIRST, TPM2_TRANSIENT_LAST) < 0) {
+		log_error("failed to flush transient objects");
 		return -1;
 	}
 
