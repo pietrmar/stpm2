@@ -214,20 +214,20 @@ int stpm2_create_primary(stpm2_context *ctx)
 	in_public.publicArea.parameters.rsaDetail.keyBits = 2048;
 
 	TSS2_RC ret;
-	ret = Tss2_Sys_CreatePrimary(ctx->sys_ctx,
-					TPM2_RH_OWNER,
-					&sessions_cmd,
-					&in_sensitive,
-					&in_public,
-					&outside_info,
-					&creation_pcr,
-					&ctx->primary_handle,
-					&out_public,
-					&creation_data,
-					&creation_hash,
-					&creation_ticket,
-					&name,
-					&sessions_rsp);
+	ret = TSS2_RETRY_EXP(Tss2_Sys_CreatePrimary(ctx->sys_ctx,
+						TPM2_RH_OWNER,
+						&sessions_cmd,
+						&in_sensitive,
+						&in_public,
+						&outside_info,
+						&creation_pcr,
+						&ctx->primary_handle,
+						&out_public,
+						&creation_data,
+						&creation_hash,
+						&creation_ticket,
+						&name,
+						&sessions_rsp));
 
 	if (ret != TPM2_RC_SUCCESS) {
 		ctx->primary_handle = 0;
