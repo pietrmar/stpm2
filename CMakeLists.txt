@@ -1,9 +1,21 @@
 cmake_minimum_required (VERSION 3.5)
 project (stpm2)
 
-include_directories(src)
+add_definitions(-DLOG_USE_COLOR)
 
-add_library(stpm2 src/stpm2.c)
+include_directories(
+	src
+	src/imported
+	src/imported/tpm2-tools
+	src/imported/log.c/src
+)
+
+add_library(
+	stpm2
+	src/stpm2.c
+	src/imported/tpm2-tools/tpm2_error.c
+	src/imported/log.c/src/log.c
+)
 target_link_libraries(stpm2 tss2-sys dl)
 
 add_executable(example_get_random examples/get_random.c)

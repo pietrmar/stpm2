@@ -5,13 +5,18 @@
 #include <string.h>
 #include <dlfcn.h>
 
+#include <log.h>
+
 #include <tss2/tss2_sys.h>
 #include <tss2/tss2_tpm2_types.h>
 #include <stpm2.h>
 #include <tpm2_utils.h>
+#include <tpm2_error.h>
 
 static int init_tcit(stpm2_context *ctx)
 {
+	log_trace("Entering %s", __func__);
+
 	/*
 	 * Use tabrmd for now, which is the access broker, so this should work
 	 * with the simulator as well as the real device over SPI as long as an
@@ -21,13 +26,13 @@ static int init_tcit(stpm2_context *ctx)
 
 	ctx->tcti_so_handle = dlopen(tcti_so, RTLD_LAZY);
 	if (!ctx->tcti_so_handle) {
-		fprintf(stderr, "Failed to load %s\n", tcti_so);
+		log_error("Failed to load %s", tcti_so);
 		return -1;
 	}
 
 	TSS2_TCTI_INFO_FUNC infofn = (TSS2_TCTI_INFO_FUNC)dlsym(ctx->tcti_so_handle, TSS2_TCTI_INFO_SYMBOL);
 	if (!infofn) {
-		fprintf(stderr, "Could not find synbol %s in %s\n", TSS2_TCTI_INFO_SYMBOL, tcti_so);
+		log_error("Could not find synbol %s in %s\n", TSS2_TCTI_INFO_SYMBOL, tcti_so);
 		return -1;
 	}
 
@@ -37,26 +42,29 @@ static int init_tcit(stpm2_context *ctx)
 	size_t size;
 	TSS2_RC ret = init(NULL, &size, NULL);
 	if (ret != TPM2_RC_SUCCESS) {
-		fprintf(stderr, "tcti init failed\n");
+		log_error("tcti init failed with %s", tpm2_error_str(ret));
 		return -1;
 	}
 
 	ctx->tcti_ctx = (TSS2_TCTI_CONTEXT *)calloc(1, size);
 	if (ctx->tcti_ctx == NULL) {
+		log_error("Failed to allocate tcti_ctx");
 		return -1;
 	}
 
 	ret = init(ctx->tcti_ctx, &size, NULL);
 	if (ret != TPM2_RC_SUCCESS) {
-		fprintf(stderr, "tcti init failed\n");
+		log_error("tcti init call failed %s", tpm2_error_str(ret));
 		return -1;
 	}
 
+	log_trace("Leaving %s", __func__);
 	return 0;
 }
 
 int stpm2_init(stpm2_context *ctx)
 {
+	log_trace("Entering %s", __func__);
 	TSS2_RC ret;
 	TSS2_ABI_VERSION abi_version = {
 		.tssCreator = 1,
@@ -67,36 +75,46 @@ int stpm2_init(stpm2_context *ctx)
 
 	/* Allocate system ctx */
 	size_t ctx_size = Tss2_Sys_GetContextSize(0);
+	log_debug("ctx_size is %zu", ctx_size);
 
 	ctx->sys_ctx = (TSS2_SYS_CONTEXT *)calloc(1, ctx_size);
 	if (ctx->sys_ctx == NULL) {
+		log_error("Failed to allocate sys_ctx");
 		return -1;
 	}
 
-	/* TODO: handle errors */
-	init_tcit(ctx);
+	if (init_tcit(ctx) < 0) {
+		log_error("init_tcit() failed");
+		return -1;
+	}
 
 	ret = Tss2_Sys_Initialize(ctx->sys_ctx, ctx_size, ctx->tcti_ctx, &abi_version);
 	if (ret != TPM2_RC_SUCCESS) {
+		log_error("Tss2_Sys_Initialize() failed with %s", tpm2_error_str(ret));
 		return -1;
 	}
 
+	log_trace("Leaving %s", __func__);
 	return 0;
 }
 
 int stpm2_free(stpm2_context *ctx)
 {
+	log_trace("Entering %s", __func__);
 	/* TODO: implement me */
+	log_trace("Leaving %s", __func__);
 	return 0;
 }
 
 int stpm2_get_random(stpm2_context *ctx, uint8_t *buf, size_t size)
 {
+	log_trace("Entering %s", __func__);
 	/*TODO: check size of output buffer, the TPM2 can only deliver a limited number of random bytes on one call. */
 	TPM2B_DIGEST random_bytes = TPM2B_TYPE_INIT(TPM2B_DIGEST, buffer);
 
 	TSS2_RC ret = TSS2_RETRY_EXP(Tss2_Sys_GetRandom(ctx->sys_ctx, NULL, size, &random_bytes, NULL));
 	if (ret != TPM2_RC_SUCCESS) {
+		log_error("Tss2_Sys_GetRandom() failed with %s", tpm2_error_str(ret));
 		return -1;
 	}
 
@@ -105,6 +123,7 @@ int stpm2_get_random(stpm2_context *ctx, uint8_t *buf, size_t size)
 		buf[i] = random_bytes.buffer[i];
 	}
 
+	log_trace("Leaving %s", __func__);
 	return 0;
 }
 
@@ -124,8 +143,10 @@ static TPMI_ALG_HASH stpm2_to_tpmi_alg(stpm2_hash_alg alg)
 
 int stpm2_hash(stpm2_context *ctx, stpm2_hash_alg alg, const uint8_t *buf, size_t size, uint8_t *outbuf, size_t outsize)
 {
+	log_trace("Entering %s", __func__);
 	/* TODO: handle input which is larger than TPM2_MAX_DIGEST_BUFFER */
 	if (size > TPM2_MAX_DIGEST_BUFFER) {
+		log_error("stpm2_hash() only supports buffers of up to %zu bytes\n", TPM2_MAX_DIGEST_BUFFER);
 		return -1;
 	}
 
@@ -137,6 +158,7 @@ int stpm2_hash(stpm2_context *ctx, stpm2_hash_alg alg, const uint8_t *buf, size_
 
 	TSS2_RC ret = TSS2_RETRY_EXP(Tss2_Sys_Hash(ctx->sys_ctx, NULL, &buffer, stpm2_to_tpmi_alg(alg), TPM2_RH_OWNER, &result, &validation, NULL));
 	if (ret != TPM2_RC_SUCCESS) {
+		log_error("Tss2_Sys_Hash() failed with %s", tpm2_error_str(ret));
 		return -1;
 	}
 
@@ -145,6 +167,7 @@ int stpm2_hash(stpm2_context *ctx, stpm2_hash_alg alg, const uint8_t *buf, size_
 		outbuf[i] = result.buffer[i];
 	}
 
+	log_trace("Leaving %s", __func__);
 	return i;
 }
 
@@ -154,6 +177,7 @@ int stpm2_hash(stpm2_context *ctx, stpm2_hash_alg alg, const uint8_t *buf, size_
  */
 int stpm2_create_primary(stpm2_context *ctx)
 {
+	log_trace("Entering %s", __func__);
 	TSS2L_SYS_AUTH_COMMAND sessions_cmd = {
 		.count = 1,
 		.auths = {{ .sessionHandle = TPM2_RS_PW }},
@@ -207,6 +231,7 @@ int stpm2_create_primary(stpm2_context *ctx)
 
 	if (ret != TPM2_RC_SUCCESS) {
 		ctx->primary_handle = 0;
+		log_error("Tss2_Sys_CreatePrimary() failed with %s", tpm2_error_str(ret));
 		return -1;
 	}
 
@@ -219,5 +244,6 @@ int stpm2_create_primary(stpm2_context *ctx)
 	}
 	printf("\n");
 
+	log_trace("Leaving %s", __func__);
 	return 0;
 }
