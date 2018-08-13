@@ -62,35 +62,45 @@ static int init_tcit(stpm2_context *ctx)
 	return 0;
 }
 
+#define TSS2_CHECKED_CALL(__fn__, ...) do { \
+		TSS2_RC ret = __fn__(__VA_ARGS__); \
+		if (ret != TSS2_RC_SUCCESS) { \
+			LOG_ERROR(#__fn__"() failed with %s", tpm2_error_str(ret)); \
+			return -1; \
+		} \
+	} while(0)
+
+#define TSS2_CHECKED_CALL_RETRY(__fn__, ...) do { \
+		TSS2_RC ret = 0; \
+		do { \
+			TSS2_RC ret = __fn__(__VA_ARGS__); \
+			if (ret != TSS2_RC_SUCCESS && tpm2_error_get(ret) != TPM2_RC_RETRY) { \
+				LOG_ERROR(#__fn__"() failed with %s", tpm2_error_str(ret)); \
+				return -1; \
+			} \
+		} while(tpm2_error_get(ret) == TPM2_RC_RETRY); \
+	} while(0)
+
 /* Based on access_broker_flush_all_unlocked() from https://github.com/tpm2-software/tpm2-abrmd.git */
 static int stpm2_flush_context_range(stpm2_context *ctx, TPM2_RH first, TPM2_RH last)
 {
-	TSS2_RC ret;
-
 	TPMS_CAPABILITY_DATA capability_data = { 0 };
 	TPM2_HANDLE handle;
 	size_t i;
 
-	ret = Tss2_Sys_GetCapability(ctx->sys_ctx,
-					NULL,
-					TPM2_CAP_HANDLES,
-					first,
-					last - first,
-					NULL,
-					&capability_data,
-					NULL);
-	if (ret != TSS2_RC_SUCCESS) {
-		LOG_ERROR("Tss2_Sys_GetCapability() failed with %s", tpm2_error_str(ret));
-		return -1;
-	}
+	TSS2_CHECKED_CALL_RETRY(Tss2_Sys_GetCapability,
+				ctx->sys_ctx,
+				NULL,
+				TPM2_CAP_HANDLES,
+				first,
+				last - first,
+				NULL,
+				&capability_data,
+				NULL);
 
 	for (i = 0; i < capability_data.data.handles.count; i++) {
 		handle = capability_data.data.handles.handle[i];
-		ret = Tss2_Sys_FlushContext(ctx->sys_ctx, handle);
-		if (ret != TSS2_RC_SUCCESS) {
-			LOG_ERROR("Tss2_Sys_FlushContext() failed with %s", tpm2_error_str(ret));
-			return -1;
-		}
+		TSS2_CHECKED_CALL_RETRY(Tss2_Sys_FlushContext, ctx->sys_ctx, handle);
 	}
 }
 
@@ -119,12 +129,9 @@ int stpm2_init(stpm2_context *ctx)
 		return -1;
 	}
 
-	ret = Tss2_Sys_Initialize(ctx->sys_ctx, ctx_size, ctx->tcti_ctx, &abi_version);
-	if (ret != TPM2_RC_SUCCESS) {
-		LOG_ERROR("Tss2_Sys_Initialize() failed with %s", tpm2_error_str(ret));
-		return -1;
-	}
+	TSS2_CHECKED_CALL_RETRY(Tss2_Sys_Initialize, ctx->sys_ctx, ctx_size, ctx->tcti_ctx, &abi_version);
 
+	/* we cannot use the TSS2_CHECKED_CALL_RETRY() macro here because Tss2_Sys_Startup() can return TPM2_RC_INITIALIZE */
 	ret = TSS2_RETRY_EXP(Tss2_Sys_Startup(ctx->sys_ctx, TPM2_SU_CLEAR));
 	if (ret != TPM2_RC_SUCCESS && ret != TPM2_RC_INITIALIZE) {
 		LOG_ERROR("Tss2_Sys_Startup() failed with %s", tpm2_error_str(ret));
@@ -165,11 +172,7 @@ int stpm2_get_random(stpm2_context *ctx, uint8_t *buf, size_t size)
 	/*TODO: check size of output buffer, the TPM2 can only deliver a limited number of random bytes on one call. */
 	TPM2B_DIGEST random_bytes = TPM2B_TYPE_INIT(TPM2B_DIGEST, buffer);
 
-	TSS2_RC ret = TSS2_RETRY_EXP(Tss2_Sys_GetRandom(ctx->sys_ctx, NULL, size, &random_bytes, NULL));
-	if (ret != TPM2_RC_SUCCESS) {
-		LOG_ERROR("Tss2_Sys_GetRandom() failed with %s", tpm2_error_str(ret));
-		return -1;
-	}
+	TSS2_CHECKED_CALL_RETRY(Tss2_Sys_GetRandom, ctx->sys_ctx, NULL, size, &random_bytes, NULL);
 
 	size_t i;
 	for(i = 0; i < size; i++) {
@@ -209,11 +212,7 @@ int stpm2_hash(stpm2_context *ctx, stpm2_hash_alg alg, const uint8_t *buf, size_
 
 	memcpy(buffer.buffer, buf, size);
 
-	TSS2_RC ret = TSS2_RETRY_EXP(Tss2_Sys_Hash(ctx->sys_ctx, NULL, &buffer, stpm2_to_tpmi_alg(alg), TPM2_RH_OWNER, &result, &validation, NULL));
-	if (ret != TPM2_RC_SUCCESS) {
-		LOG_ERROR("Tss2_Sys_Hash() failed with %s", tpm2_error_str(ret));
-		return -1;
-	}
+	TSS2_CHECKED_CALL_RETRY(Tss2_Sys_Hash, ctx->sys_ctx, NULL, &buffer, stpm2_to_tpmi_alg(alg), TPM2_RH_OWNER, &result, &validation, NULL);
 
 	int i;
 	for (i = 0; i < outsize && i < result.size; i++) {
@@ -266,27 +265,22 @@ int stpm2_create_primary(stpm2_context *ctx)
 	in_public.publicArea.parameters.rsaDetail.scheme.scheme = TPM2_ALG_NULL;
 	in_public.publicArea.parameters.rsaDetail.keyBits = 2048;
 
-	TSS2_RC ret;
-	ret = TSS2_RETRY_EXP(Tss2_Sys_CreatePrimary(ctx->sys_ctx,
-						TPM2_RH_OWNER,
-						&sessions_cmd,
-						&in_sensitive,
-						&in_public,
-						&outside_info,
-						&creation_pcr,
-						&ctx->primary_handle,
-						&out_public,
-						&creation_data,
-						&creation_hash,
-						&creation_ticket,
-						&name,
-						&sessions_rsp));
-
-	if (ret != TPM2_RC_SUCCESS) {
-		ctx->primary_handle = 0;
-		LOG_ERROR("Tss2_Sys_CreatePrimary() failed with %s", tpm2_error_str(ret));
-		return -1;
-	}
+	ctx->primary_handle = 0;
+	TSS2_CHECKED_CALL_RETRY(Tss2_Sys_CreatePrimary,
+				ctx->sys_ctx,
+				TPM2_RH_OWNER,
+				&sessions_cmd,
+				&in_sensitive,
+				&in_public,
+				&outside_info,
+				&creation_pcr,
+				&ctx->primary_handle,
+				&out_public,
+				&creation_data,
+				&creation_hash,
+				&creation_ticket,
+				&name,
+				&sessions_rsp);
 
 	printf("Created primary key:\n");
 	printf("\thandle: 0x%X\n", ctx->primary_handle);
