@@ -263,7 +263,7 @@ static TPMI_ALG_HASH stpm2_to_tpmi_alg(stpm2_hash_alg alg)
 	case STPM2_HASH_ALG_SHA512:
 		return TPM2_ALG_SHA512;
 	default:
-		LOG_ERROR("unknown hash algorithm specified");
+		LOG_ERROR("Unknown hash algorithm specified");
 		return TPM2_ALG_NULL;
 	}
 }
