@@ -23,5 +23,3 @@ target_link_libraries(example_get_random stpm2)
 add_executable(example_hash examples/hash.c)
 target_link_libraries(example_hash stpm2)
 
-add_executable(example_create_primary examples/create_primary.c)
-target_link_libraries(example_create_primary stpm2)

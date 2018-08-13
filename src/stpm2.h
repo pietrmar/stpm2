@@ -27,6 +27,4 @@ int stpm2_free(stpm2_context *ctx);
 int stpm2_get_random(stpm2_context *ctx, uint8_t *buf, size_t size);
 int stpm2_hash(stpm2_context *ctx, stpm2_hash_alg alg, const uint8_t *buf, size_t size, uint8_t *outbuf, size_t outsize);
 
-int stpm2_create_primary(stpm2_context *ctx);
-
 #endif /* __STPM2_H__ */

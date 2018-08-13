@@ -106,6 +106,67 @@ static int stpm2_flush_context_range(stpm2_context *ctx, TPM2_RH first, TPM2_RH 
 	return 0;
 }
 
+/*
+ * This creates a primary key with the default settings that match tpm2_createprimary,
+ * they key is stored inside the stpm2_context struct
+ */
+static int stpm2_create_primary(stpm2_context *ctx)
+{
+	LOG_TRACE("Entering %s", __func__);
+	TSS2L_SYS_AUTH_COMMAND sessions_cmd = {
+		.count = 1,
+		.auths = {{ .sessionHandle = TPM2_RS_PW }},
+	};
+
+	TSS2L_SYS_AUTH_RESPONSE sessions_rsp;
+
+	TPM2B_SENSITIVE_CREATE	in_sensitive	= { 0 };
+	TPM2B_DATA		outside_info	= { 0 };
+	TPM2B_CREATION_DATA	creation_data	= { 0 };
+	TPM2B_DIGEST		creation_hash	= TPM2B_TYPE_INIT(TPM2B_DIGEST, buffer);
+	TPM2B_PUBLIC		in_public	= { 0 };
+	TPMT_TK_CREATION	creation_ticket	= { 0 };
+	TPM2B_NAME		name		= TPM2B_TYPE_INIT(TPM2B_NAME, name);
+	TPML_PCR_SELECTION	creation_pcr	= { 0 };
+	TPM2B_PUBLIC		out_public	= { 0 };
+
+	in_public.publicArea.type = TPM2_ALG_RSA;
+	in_public.publicArea.nameAlg = TPM2_ALG_SHA256;
+	in_public.publicArea.objectAttributes |= TPMA_OBJECT_RESTRICTED;
+	in_public.publicArea.objectAttributes |= TPMA_OBJECT_USERWITHAUTH;
+	in_public.publicArea.objectAttributes |= TPMA_OBJECT_DECRYPT;
+	in_public.publicArea.objectAttributes |= TPMA_OBJECT_FIXEDTPM;
+	in_public.publicArea.objectAttributes |= TPMA_OBJECT_FIXEDPARENT;
+	in_public.publicArea.objectAttributes |= TPMA_OBJECT_SENSITIVEDATAORIGIN;
+	in_public.publicArea.parameters.rsaDetail.symmetric.algorithm = TPM2_ALG_AES;
+	in_public.publicArea.parameters.rsaDetail.symmetric.keyBits.aes = 256;
+	in_public.publicArea.parameters.rsaDetail.symmetric.mode.aes = TPM2_ALG_NULL;
+	in_public.publicArea.parameters.rsaDetail.scheme.scheme = TPM2_ALG_NULL;
+	in_public.publicArea.parameters.rsaDetail.keyBits = 2048;
+
+	ctx->primary_handle = 0;
+	TSS2_CHECKED_CALL_RETRY(Tss2_Sys_CreatePrimary,
+				ctx->sys_ctx,
+				TPM2_RH_OWNER,
+				&sessions_cmd,
+				&in_sensitive,
+				&in_public,
+				&outside_info,
+				&creation_pcr,
+				&ctx->primary_handle,
+				&out_public,
+				&creation_data,
+				&creation_hash,
+				&creation_ticket,
+				&name,
+				&sessions_rsp);
+
+	LOG_INFO("Created primary key with handle 0x%X", ctx->primary_handle);
+
+	LOG_TRACE("Leaving %s", __func__);
+	return 0;
+}
+
 int stpm2_init(stpm2_context *ctx)
 {
 	LOG_TRACE("Entering %s", __func__);
@@ -152,7 +213,12 @@ int stpm2_init(stpm2_context *ctx)
 	}
 
 	if (stpm2_flush_context_range(ctx, TPM2_TRANSIENT_FIRST, TPM2_TRANSIENT_LAST) < 0) {
-		LOG_ERROR("failed to flush transient objects");
+		LOG_ERROR("Failed to flush transient objects");
+		return -1;
+	}
+
+	if (stpm2_create_primary(ctx) < 0) {
+		LOG_ERROR("Failed to create primary key");
 		return -1;
 	}
 
@@ -228,70 +294,3 @@ int stpm2_hash(stpm2_context *ctx, stpm2_hash_alg alg, const uint8_t *buf, size_
 	return i;
 }
 
-/*
- * This creates a primary key with the default settings that match tpm2_createprimary,
- * they key is stored inside the stpm2_context struct
- */
-int stpm2_create_primary(stpm2_context *ctx)
-{
-	LOG_TRACE("Entering %s", __func__);
-	TSS2L_SYS_AUTH_COMMAND sessions_cmd = {
-		.count = 1,
-		.auths = {{ .sessionHandle = TPM2_RS_PW }},
-	};
-
-	TSS2L_SYS_AUTH_RESPONSE sessions_rsp;
-
-	TPM2B_SENSITIVE_CREATE	in_sensitive	= { 0 };
-	TPM2B_DATA		outside_info	= { 0 };
-	TPM2B_CREATION_DATA	creation_data	= { 0 };
-	TPM2B_DIGEST		creation_hash	= TPM2B_TYPE_INIT(TPM2B_DIGEST, buffer);
-	TPM2B_PUBLIC		in_public	= { 0 };
-	TPMT_TK_CREATION	creation_ticket	= { 0 };
-	TPM2B_NAME		name		= TPM2B_TYPE_INIT(TPM2B_NAME, name);
-	TPML_PCR_SELECTION	creation_pcr	= { 0 };
-	TPM2B_PUBLIC		out_public	= { 0 };
-
-	in_public.publicArea.type = TPM2_ALG_RSA;
-	in_public.publicArea.nameAlg = TPM2_ALG_SHA256;
-	in_public.publicArea.objectAttributes |= TPMA_OBJECT_RESTRICTED;
-	in_public.publicArea.objectAttributes |= TPMA_OBJECT_USERWITHAUTH;
-	in_public.publicArea.objectAttributes |= TPMA_OBJECT_DECRYPT;
-	in_public.publicArea.objectAttributes |= TPMA_OBJECT_FIXEDTPM;
-	in_public.publicArea.objectAttributes |= TPMA_OBJECT_FIXEDPARENT;
-	in_public.publicArea.objectAttributes |= TPMA_OBJECT_SENSITIVEDATAORIGIN;
-	in_public.publicArea.parameters.rsaDetail.symmetric.algorithm = TPM2_ALG_AES;
-	in_public.publicArea.parameters.rsaDetail.symmetric.keyBits.aes = 256;
-	in_public.publicArea.parameters.rsaDetail.symmetric.mode.aes = TPM2_ALG_NULL;
-	in_public.publicArea.parameters.rsaDetail.scheme.scheme = TPM2_ALG_NULL;
-	in_public.publicArea.parameters.rsaDetail.keyBits = 2048;
-
-	ctx->primary_handle = 0;
-	TSS2_CHECKED_CALL_RETRY(Tss2_Sys_CreatePrimary,
-				ctx->sys_ctx,
-				TPM2_RH_OWNER,
-				&sessions_cmd,
-				&in_sensitive,
-				&in_public,
-				&outside_info,
-				&creation_pcr,
-				&ctx->primary_handle,
-				&out_public,
-				&creation_data,
-				&creation_hash,
-				&creation_ticket,
-				&name,
-				&sessions_rsp);
-
-	printf("Created primary key:\n");
-	printf("\thandle: 0x%X\n", ctx->primary_handle);
-
-	printf("\trsa public portion: ");
-	for (int i = 0; i < out_public.publicArea.unique.rsa.size; i++) {
-		printf("%02x", out_public.publicArea.unique.rsa.buffer[i]);
-	}
-	printf("\n");
-
-	LOG_TRACE("Leaving %s", __func__);
-	return 0;
-}
