@@ -163,6 +163,11 @@ static int stpm2_create_primary(stpm2_context *ctx)
 
 	LOG_INFO("Created primary key with handle 0x%X", ctx->primary_handle);
 
+	LOG_HEXDUMP(STPM2_LOG_LEVEL_DEBUG,
+			"Public RSA modulus",
+			out_public.publicArea.unique.rsa.buffer,
+			out_public.publicArea.unique.rsa.size);
+
 	LOG_TRACE("Leaving %s", __func__);
 	return 0;
 }
