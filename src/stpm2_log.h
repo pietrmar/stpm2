@@ -10,6 +10,8 @@
 #define LOG_DEBUG(...) stpm2_do_log(STPM2_LOG_LEVEL_DEBUG, __FILENAME__, __LINE__, __VA_ARGS__)
 #define LOG_TRACE(...) stpm2_do_log(STPM2_LOG_LEVEL_TRACE, __FILENAME__, __LINE__, __VA_ARGS__)
 
+#define LOG_HEXDUMP(__l, __h, __b, __s) stpm2_do_log_hexdump(__l, __FILENAME__, __LINE__, __h, __b, __s)
+
 typedef enum {
 	STPM2_LOG_LEVEL_ERR,
 	STPM2_LOG_LEVEL_WARN,
@@ -22,5 +24,6 @@ stpm2_log_level stpm2_get_log_level(void);
 void stpm2_set_log_level(stpm2_log_level level);
 
 void stpm2_do_log(stpm2_log_level level, const char *file, int line, const char *fmt, ...);
+void stpm2_do_log_hexdump(stpm2_log_level level, const char *file, int line, char *header, unsigned char *buf, size_t len);
 
 #endif /* __STPM2_LOG_H__ */
