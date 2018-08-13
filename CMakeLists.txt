@@ -1,6 +1,8 @@
 cmake_minimum_required (VERSION 3.5)
 project (stpm2)
 
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror")
+
 include_directories(
 	src
 	src/imported

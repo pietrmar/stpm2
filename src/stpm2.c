@@ -102,6 +102,8 @@ static int stpm2_flush_context_range(stpm2_context *ctx, TPM2_RH first, TPM2_RH 
 		handle = capability_data.data.handles.handle[i];
 		TSS2_CHECKED_CALL_RETRY(Tss2_Sys_FlushContext, ctx->sys_ctx, handle);
 	}
+
+	return 0;
 }
 
 int stpm2_init(stpm2_context *ctx)
@@ -194,6 +196,9 @@ static TPMI_ALG_HASH stpm2_to_tpmi_alg(stpm2_hash_alg alg)
 		return TPM2_ALG_SHA384;
 	case STPM2_HASH_ALG_SHA512:
 		return TPM2_ALG_SHA512;
+	default:
+		LOG_ERROR("unknown hash algorithm specified");
+		return TPM2_ALG_NULL;
 	}
 }
 
@@ -202,7 +207,7 @@ int stpm2_hash(stpm2_context *ctx, stpm2_hash_alg alg, const uint8_t *buf, size_
 	LOG_TRACE("Entering %s", __func__);
 	/* TODO: handle input which is larger than TPM2_MAX_DIGEST_BUFFER */
 	if (size > TPM2_MAX_DIGEST_BUFFER) {
-		LOG_ERROR("stpm2_hash() only supports buffers of up to %zu bytes\n", TPM2_MAX_DIGEST_BUFFER);
+		LOG_ERROR("stpm2_hash() only supports buffers of up to %zu bytes", TPM2_MAX_DIGEST_BUFFER);
 		return -1;
 	}
 
@@ -235,10 +240,7 @@ int stpm2_create_primary(stpm2_context *ctx)
 		.auths = {{ .sessionHandle = TPM2_RS_PW }},
 	};
 
-	TSS2L_SYS_AUTH_RESPONSE sessions_rsp = {
-		.count = 0,
-		.auths = { 0 },
-	};
+	TSS2L_SYS_AUTH_RESPONSE sessions_rsp;
 
 	TPM2B_SENSITIVE_CREATE	in_sensitive	= { 0 };
 	TPM2B_DATA		outside_info	= { 0 };
@@ -249,7 +251,6 @@ int stpm2_create_primary(stpm2_context *ctx)
 	TPM2B_NAME		name		= TPM2B_TYPE_INIT(TPM2B_NAME, name);
 	TPML_PCR_SELECTION	creation_pcr	= { 0 };
 	TPM2B_PUBLIC		out_public	= { 0 };
-	TPM2_HANDLE		handle_parent	= 0;
 
 	in_public.publicArea.type = TPM2_ALG_RSA;
 	in_public.publicArea.nameAlg = TPM2_ALG_SHA256;
