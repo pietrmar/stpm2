@@ -203,12 +203,9 @@ int stpm2_init(stpm2_context *ctx)
 	TRACE_ENTER();
 
 	TSS2_RC ret;
-	TSS2_ABI_VERSION abi_version = {
-		.tssCreator = 1,
-		.tssFamily = 2,
-		.tssLevel = 1,
-		.tssVersion = 108,
-	};
+
+	/* Use current ABI version of tss2 headers we are compiling against */
+	TSS2_ABI_VERSION abi_version = TSS2_ABI_VERSION_CURRENT;
 
 	/* Allocate system ctx */
 	size_t ctx_size = Tss2_Sys_GetContextSize(0);
