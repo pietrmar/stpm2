@@ -33,7 +33,15 @@ static int init_tcit(stpm2_context *ctx)
 		return -1;
 	}
 
-	TSS2_TCTI_INFO_FUNC infofn = (TSS2_TCTI_INFO_FUNC)dlsym(ctx->tcti_so_handle, TSS2_TCTI_INFO_SYMBOL);
+	/*
+	 * We need to use this trick to get around the "ISO C forbids conversion of object pointer to function pointer type"
+	 * warning which comes with -Wpedantic.
+	 *
+	 * Based on: https://stackoverflow.com/questions/14134245/iso-c-void-and-function-pointers
+	 */
+	TSS2_TCTI_INFO_FUNC infofn;
+	*((void **)(&infofn)) = dlsym(ctx->tcti_so_handle, TSS2_TCTI_INFO_SYMBOL);
+
 	if (!infofn) {
 		LOG_ERROR("Could not find synbol %s in %s\n", TSS2_TCTI_INFO_SYMBOL, tcti_so);
 		return -1;

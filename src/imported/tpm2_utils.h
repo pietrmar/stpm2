@@ -22,7 +22,7 @@
  * retry function calls when the RC is TPM2_RC_RETRY.
  */
 #define TSS2_RETRY_EXP(expression)                         \
-    ({                                                     \
+    __extension__ ({                                       \
         TSS2_RC __result = 0;                              \
         do {                                               \
             __result = (expression);                       \
