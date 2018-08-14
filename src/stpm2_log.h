@@ -12,6 +12,9 @@
 
 #define LOG_HEXDUMP(__l, __h, __b, __s) stpm2_do_log_hexdump(__l, __FILENAME__, __LINE__, __h, __b, __s)
 
+#define TRACE_ENTER() stpm2_do_log(STPM2_LOG_LEVEL_TRACE, __FILENAME__, __LINE__, "Entering %s()", __func__)
+#define TRACE_LEAVE() stpm2_do_log(STPM2_LOG_LEVEL_TRACE, __FILENAME__, __LINE__, "Leaving %s()", __func__)
+
 typedef enum {
 	STPM2_LOG_LEVEL_ERR,
 	STPM2_LOG_LEVEL_WARN,
