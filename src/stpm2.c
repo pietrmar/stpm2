@@ -84,6 +84,8 @@ static int init_tcit(stpm2_context *ctx)
 /* Based on access_broker_flush_all_unlocked() from https://github.com/tpm2-software/tpm2-abrmd.git */
 static int stpm2_flush_context_range(stpm2_context *ctx, TPM2_RH first, TPM2_RH last)
 {
+	TRACE_ENTER();
+
 	TPMS_CAPABILITY_DATA capability_data = { 0 };
 	TPM2_HANDLE handle;
 	size_t i;
@@ -103,6 +105,30 @@ static int stpm2_flush_context_range(stpm2_context *ctx, TPM2_RH first, TPM2_RH 
 		TSS2_CHECKED_CALL_RETRY(Tss2_Sys_FlushContext, ctx->sys_ctx, handle);
 	}
 
+	TRACE_LEAVE();
+	return 0;
+}
+
+static int stpm2_flush_all(stpm2_context *ctx)
+{
+	TRACE_ENTER();
+
+	if (stpm2_flush_context_range(ctx, TPM2_ACTIVE_SESSION_FIRST, TPM2_ACTIVE_SESSION_LAST) < 0) {
+		LOG_ERROR("Failed to flush active sessions");
+		return -1;
+	}
+
+	if (stpm2_flush_context_range(ctx, TPM2_LOADED_SESSION_FIRST, TPM2_LOADED_SESSION_LAST) < 0) {
+		LOG_ERROR("Failed to flush loaded sessions");
+		return -1;
+	}
+
+	if (stpm2_flush_context_range(ctx, TPM2_TRANSIENT_FIRST, TPM2_TRANSIENT_LAST) < 0) {
+		LOG_ERROR("Failed to flush transient objects");
+		return -1;
+	}
+
+	TRACE_LEAVE();
 	return 0;
 }
 
@@ -208,21 +234,12 @@ int stpm2_init(stpm2_context *ctx)
 	}
 
 	/* Flush all objects to have a clean state */
-	if (stpm2_flush_context_range(ctx, TPM2_ACTIVE_SESSION_FIRST, TPM2_ACTIVE_SESSION_LAST) < 0) {
-		LOG_ERROR("Failed to flush active sessions");
+	if (stpm2_flush_all(ctx) < 0) {
+		LOG_ERROR("stpm2_flush_all() failed");
 		return -1;
 	}
 
-	if (stpm2_flush_context_range(ctx, TPM2_LOADED_SESSION_FIRST, TPM2_LOADED_SESSION_LAST) < 0) {
-		LOG_ERROR("Failed to flush loaded sessions");
-		return -1;
-	}
-
-	if (stpm2_flush_context_range(ctx, TPM2_TRANSIENT_FIRST, TPM2_TRANSIENT_LAST) < 0) {
-		LOG_ERROR("Failed to flush transient objects");
-		return -1;
-	}
-
+	/* Always create a primary key */
 	if (stpm2_create_primary(ctx) < 0) {
 		LOG_ERROR("Failed to create primary key");
 		return -1;
@@ -234,10 +251,37 @@ int stpm2_init(stpm2_context *ctx)
 
 int stpm2_free(stpm2_context *ctx)
 {
+	int ret = 0;
 	TRACE_ENTER();
-	/* TODO: implement me */
+
+	/* Since we are freeing memory we do not want to exit on failure in any of the following functions */
+	if (stpm2_flush_all(ctx) < 0) {
+		LOG_ERROR("stpm2_flush_all() failed");
+		ret = -1;
+	}
+
+	TSS2_RC tss2_ret = Tss2_Sys_Shutdown(ctx->sys_ctx, NULL, TPM2_SU_CLEAR, NULL);
+	if (tss2_ret != TPM2_RC_SUCCESS) {
+		LOG_ERROR("Tss2_Sys_Shutdown() failed with %s", tpm2_error_str(tss2_ret));
+		ret = -1;
+	}
+
+	Tss2_Sys_Finalize(ctx->sys_ctx);
+	free(ctx->sys_ctx);
+	ctx->sys_ctx = NULL;
+
+	Tss2_Tcti_Finalize(ctx->tcti_ctx);
+	free(ctx->tcti_ctx);
+	ctx->tcti_ctx = NULL;
+
+	if (dlclose(ctx->tcti_so_handle) != 0) {
+		LOG_ERROR("dlclose() failed");
+		ret = -1;
+	}
+	ctx->tcti_so_handle = NULL;
+
 	TRACE_LEAVE();
-	return 0;
+	return ret;
 }
 
 int stpm2_get_random(stpm2_context *ctx, uint8_t *buf, size_t size)
