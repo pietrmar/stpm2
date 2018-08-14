@@ -13,24 +13,25 @@ int main(int argc, char *argv[])
 
 	ret = stpm2_init(&ctx);
 	if (ret < 0) {
-		printf("stpm2_init() failed\n");
+		LOG_ERROR("stpm2_init() failed");
 		return 1;
 	}
 
 	ret = stpm2_get_random(&ctx, random_bytes, NUM_RANDOM_BYTES);
 	if (ret < 0) {
-		printf("stpm2_get_random() failed\n");
+		LOG_ERROR("stpm2_get_random() failed");
 		return 1;
 	}
 
-	LOG_HEXDUMP(STPM2_LOG_LEVEL_INFO,
-			"Random bytes",
-			random_bytes,
-			NUM_RANDOM_BYTES);
+	printf("Random bytes: \n");
+	for (int i; i < NUM_RANDOM_BYTES; i++) {
+		printf("0x%02x ", random_bytes[i]);
+	}
+	printf("\n");
 
 	ret = stpm2_free(&ctx);
 	if (ret < 0) {
-		printf("stpm2_free() failed\n");
+		LOG_ERROR("stpm2_free() failed");
 		return 1;
 	}
 
