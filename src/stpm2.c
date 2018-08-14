@@ -15,7 +15,7 @@
 
 static int init_tcit(stpm2_context *ctx)
 {
-	LOG_TRACE("Entering %s", __func__);
+	TRACE_ENTER();
 
 	/*
 	 * Tested with:
@@ -58,7 +58,7 @@ static int init_tcit(stpm2_context *ctx)
 		return -1;
 	}
 
-	LOG_TRACE("Leaving %s", __func__);
+	TRACE_LEAVE();
 	return 0;
 }
 
@@ -112,7 +112,7 @@ static int stpm2_flush_context_range(stpm2_context *ctx, TPM2_RH first, TPM2_RH 
  */
 static int stpm2_create_primary(stpm2_context *ctx)
 {
-	LOG_TRACE("Entering %s", __func__);
+	TRACE_ENTER();
 	TSS2L_SYS_AUTH_COMMAND sessions_cmd = {
 		.count = 1,
 		.auths = {{ .sessionHandle = TPM2_RS_PW }},
@@ -168,13 +168,14 @@ static int stpm2_create_primary(stpm2_context *ctx)
 			out_public.publicArea.unique.rsa.buffer,
 			out_public.publicArea.unique.rsa.size);
 
-	LOG_TRACE("Leaving %s", __func__);
+	TRACE_LEAVE();
 	return 0;
 }
 
 int stpm2_init(stpm2_context *ctx)
 {
-	LOG_TRACE("Entering %s", __func__);
+	TRACE_ENTER();
+
 	TSS2_RC ret;
 	TSS2_ABI_VERSION abi_version = {
 		.tssCreator = 1,
@@ -227,21 +228,21 @@ int stpm2_init(stpm2_context *ctx)
 		return -1;
 	}
 
-	LOG_TRACE("Leaving %s", __func__);
+	TRACE_LEAVE();
 	return 0;
 }
 
 int stpm2_free(stpm2_context *ctx)
 {
-	LOG_TRACE("Entering %s", __func__);
+	TRACE_ENTER();
 	/* TODO: implement me */
-	LOG_TRACE("Leaving %s", __func__);
+	TRACE_LEAVE();
 	return 0;
 }
 
 int stpm2_get_random(stpm2_context *ctx, uint8_t *buf, size_t size)
 {
-	LOG_TRACE("Entering %s", __func__);
+	TRACE_ENTER();
 	/*TODO: check size of output buffer, the TPM2 can only deliver a limited number of random bytes on one call. */
 	TPM2B_DIGEST random_bytes = TPM2B_TYPE_INIT(TPM2B_DIGEST, buffer);
 
@@ -252,7 +253,7 @@ int stpm2_get_random(stpm2_context *ctx, uint8_t *buf, size_t size)
 		buf[i] = random_bytes.buffer[i];
 	}
 
-	LOG_TRACE("Leaving %s", __func__);
+	TRACE_LEAVE();
 	return 0;
 }
 
@@ -275,7 +276,7 @@ static TPMI_ALG_HASH stpm2_to_tpmi_alg(stpm2_hash_alg alg)
 
 int stpm2_hash(stpm2_context *ctx, stpm2_hash_alg alg, const uint8_t *buf, size_t size, uint8_t *outbuf, size_t outsize)
 {
-	LOG_TRACE("Entering %s", __func__);
+	TRACE_ENTER();
 	/* TODO: handle input which is larger than TPM2_MAX_DIGEST_BUFFER */
 	if (size > TPM2_MAX_DIGEST_BUFFER) {
 		LOG_ERROR("stpm2_hash() only supports buffers of up to %zu bytes", TPM2_MAX_DIGEST_BUFFER);
@@ -295,7 +296,7 @@ int stpm2_hash(stpm2_context *ctx, stpm2_hash_alg alg, const uint8_t *buf, size_
 		outbuf[i] = result.buffer[i];
 	}
 
-	LOG_TRACE("Leaving %s", __func__);
+	TRACE_LEAVE();
 	return i;
 }
 
