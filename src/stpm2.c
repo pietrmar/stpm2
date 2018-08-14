@@ -352,3 +352,6 @@ int stpm2_hash(stpm2_context *ctx, stpm2_hash_alg alg, const uint8_t *buf, size_
 	return i;
 }
 
+
+#undef TSS2_CHECKED_CALL
+#undef TSS2_CHECKED_CALL_RETRY
