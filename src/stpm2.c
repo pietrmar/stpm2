@@ -18,9 +18,9 @@ static int init_tcit(stpm2_context *ctx)
 	LOG_TRACE("Entering %s", __func__);
 
 	/*
-	 * Use tabrmd for now, which is the access broker, so this should work
-	 * with the simulator as well as the real device over SPI as long as an
-	 * access broker is properly running.
+	 * Tested with:
+	 *  * libtss2-tcti-tabrmd.so.0 (access broker, which uses the simulator at the backend)
+	 *  * libtss2-tcti-mssim.so.0  (simulator)
 	 */
 	const char *tcti_so = "libtss2-tcti-mssim.so.0";
 
