@@ -24,7 +24,7 @@ int main(int argc, char *argv[])
 	}
 
 	printf("Random bytes: \n");
-	for (int i; i < NUM_RANDOM_BYTES; i++) {
+	for (size_t i; i < NUM_RANDOM_BYTES; i++) {
 		printf("0x%02x ", random_bytes[i]);
 	}
 	printf("\n");
