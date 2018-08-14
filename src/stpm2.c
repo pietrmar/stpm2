@@ -19,10 +19,13 @@ static int init_tcit(stpm2_context *ctx)
 
 	/*
 	 * Tested with:
-	 *  * libtss2-tcti-tabrmd.so.0 (access broker, which uses the simulator at the backend)
-	 *  * libtss2-tcti-mssim.so.0  (simulator)
+	 *  * libtss2-tcti-tabrmd.so (access broker, which uses the simulator at the backend)
+	 *  * libtss2-tcti-mssim.so  (simulator)
+	 *
+	 *  TODO:
+	 *   * test with libtss2-tcti-device.so on the RPi
 	 */
-	const char *tcti_so = "libtss2-tcti-mssim.so.0";
+	const char *tcti_so = "libtss2-tcti-mssim.so";
 
 	ctx->tcti_so_handle = dlopen(tcti_so, RTLD_LAZY);
 	if (!ctx->tcti_so_handle) {
