@@ -151,6 +151,7 @@ static int stpm2_flush_all(stpm2_context *ctx)
 static int stpm2_create_primary(stpm2_context *ctx)
 {
 	TRACE_ENTER();
+
 	TSS2L_SYS_AUTH_COMMAND sessions_cmd = {
 		.count = 1,
 		.auths = {{ .sessionHandle = TPM2_RS_PW }},
@@ -262,8 +263,9 @@ int stpm2_init(stpm2_context *ctx)
 
 int stpm2_free(stpm2_context *ctx)
 {
-	int ret = 0;
 	TRACE_ENTER();
+
+	int ret = 0;
 
 	/* Since we are freeing memory we do not want to exit on failure in any of the following functions */
 	if (stpm2_flush_all(ctx) < 0) {
@@ -300,6 +302,7 @@ int stpm2_free(stpm2_context *ctx)
 int stpm2_get_random(stpm2_context *ctx, uint8_t *buf, size_t size)
 {
 	TRACE_ENTER();
+
 	/*TODO: check size of output buffer, the TPM2 can only deliver a limited number of random bytes on one call. */
 	TPM2B_DIGEST random_bytes = TPM2B_TYPE_INIT(TPM2B_DIGEST, buffer);
 
@@ -334,6 +337,7 @@ static TPMI_ALG_HASH stpm2_to_tpmi_alg(stpm2_hash_alg alg)
 int stpm2_hash(stpm2_context *ctx, stpm2_hash_alg alg, const uint8_t *buf, size_t size, uint8_t *outbuf, size_t outsize)
 {
 	TRACE_ENTER();
+
 	/* TODO: handle input which is larger than TPM2_MAX_DIGEST_BUFFER */
 	if (size > TPM2_MAX_DIGEST_BUFFER) {
 		LOG_ERROR("stpm2_hash() only supports buffers of up to %zu bytes", TPM2_MAX_DIGEST_BUFFER);
@@ -369,6 +373,7 @@ int stpm2_unload_key(stpm2_context *ctx)
 	TSS2_CHECKED_CALL_RETRY(Tss2_Sys_FlushContext, ctx->sys_ctx, ctx->current_rsa_key.handle);
 	memset(&ctx->current_rsa_key, 0, sizeof(ctx->current_rsa_key));
 
+	TRACE_LEAVE();
 	return 0;
 }
 
