@@ -216,11 +216,10 @@ int stpm2_init(stpm2_context *ctx)
 	TRACE_ENTER();
 
 	TSS2_RC ret;
-
-	memset(ctx, 0, sizeof(*ctx));
-
 	/* Use current ABI version of tss2 headers we are compiling against */
 	TSS2_ABI_VERSION abi_version = TSS2_ABI_VERSION_CURRENT;
+
+	memset(ctx, 0, sizeof(*ctx));
 
 	/* Allocate system ctx */
 	size_t ctx_size = Tss2_Sys_GetContextSize(0);
