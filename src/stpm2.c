@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <dlfcn.h>
+#include <errno.h>
 
 #include <tss2/tss2_sys.h>
 #include <tss2/tss2_tpm2_types.h>
@@ -215,6 +216,8 @@ int stpm2_init(stpm2_context *ctx)
 
 	TSS2_RC ret;
 
+	memset(ctx, 0, sizeof(*ctx));
+
 	/* Use current ABI version of tss2 headers we are compiling against */
 	TSS2_ABI_VERSION abi_version = TSS2_ABI_VERSION_CURRENT;
 
@@ -288,6 +291,8 @@ int stpm2_free(stpm2_context *ctx)
 	}
 	ctx->tcti_so_handle = NULL;
 
+	memset(ctx, 0, sizeof(*ctx));
+
 	TRACE_LEAVE();
 	return ret;
 }
@@ -350,6 +355,218 @@ int stpm2_hash(stpm2_context *ctx, stpm2_hash_alg alg, const uint8_t *buf, size_
 
 	TRACE_LEAVE();
 	return i;
+}
+
+int stpm2_unload_key(stpm2_context *ctx)
+{
+	TRACE_ENTER();
+
+	if (ctx->current_rsa_key.handle == 0) {
+		LOG_ERROR("no key is present in context, use stpm2_create_rsa_2048() od stpm2_load_key()");
+		return -1;
+	}
+
+	TSS2_CHECKED_CALL_RETRY(Tss2_Sys_FlushContext, ctx->sys_ctx, ctx->current_rsa_key.handle);
+	memset(&ctx->current_rsa_key, 0, sizeof(ctx->current_rsa_key));
+
+	return 0;
+}
+
+
+/* TODO: Those base64 stuff should go into seperate files */
+static uint8_t openssl_pem_header[] = {
+	0x30, 0x82, 0x01, 0x22, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86,
+	0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00, 0x03, 0x82, 0x01, 0x0f, 0x00,
+	0x30, 0x82, 0x01, 0x0a, 0x02, 0x82, 0x01, 0x01, 0x00,
+};
+
+static uint8_t openssl_pem_trail[] = {
+	0x02, 0x03,		/* integer exponent (0x02) and 3-byte long (0x03) */
+	0x01, 0x00, 0x01,	/* the exponent 65537 (2^16 + 1) */
+};
+
+static const char *openssl_begin_pubkey = "-----BEGIN PUBLIC KEY-----\n";
+static const char *openssl_end_pubkey = "\n-----END PUBLIC KEY-----\n";
+
+static const char *base64_table = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+static int base64_mod_table[] = {0, 2, 1};
+
+static size_t base64_get_encsize(size_t insize)
+{
+	return 4 * ((insize + 2) / 3);
+}
+
+/* Based on: https://stackoverflow.com/questions/342409/how-do-i-base64-encode-decode-in-c */
+static ssize_t base64_enc(uint8_t *in, size_t insize, char *out, size_t outsize)
+{
+	TRACE_ENTER();
+
+	size_t real_outsize = base64_get_encsize(insize);
+
+	if (outsize < real_outsize) {
+		LOG_ERROR("output buffer size is too small");
+		return -1;
+	}
+
+	for (size_t i = 0, j = 0; i < insize; ) {
+		uint32_t octet_a = i < insize ? in[i++] : 0;
+		uint32_t octet_b = i < insize ? in[i++] : 0;
+		uint32_t octet_c = i < insize ? in[i++] : 0;
+
+		uint32_t triple = (octet_a << 0x10) + (octet_b << 0x08) + octet_c;
+
+		out[j++] = base64_table[(triple >> 3 * 6) & 0x3F];
+		out[j++] = base64_table[(triple >> 2 * 6) & 0x3F];
+		out[j++] = base64_table[(triple >> 1 * 6) & 0x3F];
+		out[j++] = base64_table[(triple >> 0 * 6) & 0x3F];
+	}
+
+	for (int i = 0; i < base64_mod_table[insize % 3]; i++) {
+		out[real_outsize - 1 - i] = '=';
+	}
+
+	TRACE_LEAVE();
+	return real_outsize;
+}
+
+int stpm2_export_pubkey_pem(stpm2_context *ctx, const char *path)
+{
+	TRACE_ENTER();
+
+	if (ctx->current_rsa_key.handle == 0) {
+		LOG_ERROR("no key is present in context, use stpm2_create_rsa_2048() od stpm2_load_key()");
+		return -1;
+	}
+
+	size_t pubsize_bin = ctx->current_rsa_key.pub.publicArea.unique.rsa.size;
+	size_t pemsize_bin = sizeof(openssl_pem_header) + pubsize_bin + sizeof(openssl_pem_trail);
+	uint8_t *pemkey_bin = malloc(pemsize_bin);
+	if (pemkey_bin == NULL) {
+		LOG_ERROR("malloc() failed");
+		return -1;
+	}
+
+	size_t pemsize_b64 = base64_get_encsize(pemsize_bin);
+	char *pemkey_b64 = malloc(pemsize_b64);
+	if (pemkey_b64 == NULL) {
+		free(pemkey_bin);
+		LOG_ERROR("malloc() failed");
+		return -1;
+	}
+
+	size_t off = 0;
+	memcpy(pemkey_bin + off, openssl_pem_header, sizeof(openssl_pem_header));
+	off += sizeof(openssl_pem_header);
+
+	memcpy(pemkey_bin + off, ctx->current_rsa_key.pub.publicArea.unique.rsa.buffer, pubsize_bin);
+	off += pubsize_bin;
+
+	memcpy(pemkey_bin + off, openssl_pem_trail, sizeof(openssl_pem_trail));
+	off += sizeof(openssl_pem_trail);
+
+	ssize_t ret = base64_enc(pemkey_bin, pemsize_bin, pemkey_b64, pemsize_b64);
+	if (ret < 0) {
+		LOG_ERROR("base64_enc() failed\n");
+		free(pemkey_bin);
+		free(pemkey_b64);
+		return -1;
+	}
+	free(pemkey_bin);
+
+	FILE *f = fopen(path, "w");
+	if (f == NULL) {
+		LOG_ERROR("Could not open file %s for writing: %s", path, strerror(errno));
+		free(pemkey_b64);
+		return -1;
+	}
+
+	fwrite(openssl_begin_pubkey, 1, strlen(openssl_begin_pubkey), f);
+	fwrite(pemkey_b64, 1, pemsize_b64, f);
+	fwrite(openssl_end_pubkey, 1, strlen(openssl_end_pubkey), f);
+	fclose(f);
+
+	TRACE_LEAVE();
+	return 0;
+}
+
+int stpm2_create_rsa_2048(stpm2_context *ctx)
+{
+	TRACE_ENTER();
+
+	if (ctx->current_rsa_key.handle != 0) {
+		LOG_ERROR("a key is already loaded, please call stpm2_unload_key() first");
+		return -1;
+	}
+
+	TSS2L_SYS_AUTH_COMMAND sessions_cmd = {
+		.count = 1,
+		.auths = {{ .sessionHandle = TPM2_RS_PW }},
+	};
+
+	TSS2L_SYS_AUTH_RESPONSE sessions_rsp;
+
+	TPM2B_SENSITIVE_CREATE	in_sensitive	= { 0 };
+	TPM2B_DATA		outside_info	= { 0 };
+	TPM2B_CREATION_DATA	creation_data	= { 0 };
+	TPM2B_DIGEST		creation_hash	= TPM2B_TYPE_INIT(TPM2B_DIGEST, buffer);
+	TPMT_TK_CREATION	creation_ticket	= { 0 };
+	TPML_PCR_SELECTION	creation_pcr	= { 0 };
+
+	/* For a detailed description see TPM-Rev-2.0-Part-1-Architecture-01.38.pdf section 27.2 */
+	TPM2B_PUBLIC in_public = { 0 };
+	in_public.publicArea.type = TPM2_ALG_RSA;
+	in_public.publicArea.nameAlg = TPM2_ALG_SHA256;
+	in_public.publicArea.objectAttributes |= TPMA_OBJECT_DECRYPT;
+	in_public.publicArea.objectAttributes |= TPMA_OBJECT_FIXEDTPM;
+	in_public.publicArea.objectAttributes |= TPMA_OBJECT_FIXEDPARENT;
+	in_public.publicArea.objectAttributes |= TPMA_OBJECT_SENSITIVEDATAORIGIN;
+	in_public.publicArea.objectAttributes |= TPMA_OBJECT_USERWITHAUTH;
+	in_public.publicArea.objectAttributes |= TPMA_OBJECT_SIGN_ENCRYPT;
+	in_public.publicArea.parameters.rsaDetail.symmetric.algorithm = TPM2_ALG_NULL;
+	in_public.publicArea.parameters.rsaDetail.scheme.scheme = TPM2_ALG_NULL;
+	in_public.publicArea.parameters.rsaDetail.keyBits = 2048;
+
+
+	TSS2_CHECKED_CALL_RETRY(Tss2_Sys_Create,
+				ctx->sys_ctx,
+				ctx->primary_handle,
+				&sessions_cmd,
+				&in_sensitive,
+				&in_public,
+				&outside_info,
+				&creation_pcr,
+				&ctx->current_rsa_key.priv,
+				&ctx->current_rsa_key.pub,
+				&creation_data,
+				&creation_hash,
+				&creation_ticket,
+				&sessions_rsp);
+
+	LOG_INFO("Created RSA key");
+	LOG_HEXDUMP(STPM2_LOG_LEVEL_DEBUG,
+			"Public RSA modulus",
+			ctx->current_rsa_key.pub.publicArea.unique.rsa.buffer,
+			ctx->current_rsa_key.pub.publicArea.unique.rsa.size);
+
+	LOG_HEXDUMP(STPM2_LOG_LEVEL_DEBUG,
+			"Private RSA part",
+			ctx->current_rsa_key.priv.buffer,
+			ctx->current_rsa_key.priv.size);
+
+	LOG_DEBUG("Loading new key");
+	TSS2_CHECKED_CALL_RETRY(Tss2_Sys_Load,
+				ctx->sys_ctx,
+				ctx->primary_handle,
+				&sessions_cmd,
+				&ctx->current_rsa_key.priv,
+				&ctx->current_rsa_key.pub,
+				&ctx->current_rsa_key.handle,
+				NULL,
+				&sessions_rsp);
+	LOG_INFO("New key handle is 0x%X", ctx->current_rsa_key.handle);
+
+	TRACE_LEAVE();
+	return 0;
 }
 
 

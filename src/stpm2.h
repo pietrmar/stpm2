@@ -12,6 +12,12 @@ typedef struct {
 	void 	*tcti_so_handle;
 
 	TPM2_HANDLE		primary_handle;
+
+	struct {
+		TPM2_HANDLE	handle;
+		TPM2B_PUBLIC	pub;
+		TPM2B_PRIVATE	priv;
+	} current_rsa_key;
 } stpm2_context;
 
 typedef enum {
@@ -26,5 +32,9 @@ int stpm2_free(stpm2_context *ctx);
 
 int stpm2_get_random(stpm2_context *ctx, uint8_t *buf, size_t size);
 int stpm2_hash(stpm2_context *ctx, stpm2_hash_alg alg, const uint8_t *buf, size_t size, uint8_t *outbuf, size_t outsize);
+
+int stpm2_export_pubkey_pem(stpm2_context *ctx, const char *path);
+int stpm2_unload_key(stpm2_context *ctx);
+int stpm2_create_rsa_2048(stpm2_context *ctx);
 
 #endif /* __STPM2_H__ */
