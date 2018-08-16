@@ -31,3 +31,4 @@
     })
 
 #endif /* __TPM2_UTILS_H__ */
+

@@ -576,3 +576,4 @@ int stpm2_create_rsa_2048(stpm2_context *ctx)
 
 #undef TSS2_CHECKED_CALL
 #undef TSS2_CHECKED_CALL_RETRY
+

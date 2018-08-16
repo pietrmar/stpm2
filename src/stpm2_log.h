@@ -32,3 +32,4 @@ void stpm2_do_log(stpm2_log_level level, const char *file, int line, const char 
 void stpm2_do_log_hexdump(stpm2_log_level level, const char *file, int line, char *header, unsigned char *buf, size_t len);
 
 #endif /* __STPM2_LOG_H__ */
+
