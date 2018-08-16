@@ -86,7 +86,7 @@ static int init_tcit(stpm2_context *ctx)
 #define TSS2_CHECKED_CALL_RETRY(__fn__, ...) do { \
 		TSS2_RC ret = 0; \
 		do { \
-			TSS2_RC ret = __fn__(__VA_ARGS__); \
+			ret = __fn__(__VA_ARGS__); \
 			if (ret != TSS2_RC_SUCCESS && tpm2_error_get(ret) != TPM2_RC_RETRY) { \
 				LOG_ERROR(#__fn__"() failed with %s", tpm2_error_str(ret)); \
 				return -1; \
