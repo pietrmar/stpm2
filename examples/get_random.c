@@ -8,7 +8,7 @@
 int main(int argc, char *argv[])
 {
 	stpm2_context ctx;
-	int ret;
+	int ret = 0;
 	uint8_t random_bytes[NUM_RANDOM_BYTES];
 
 	ret = stpm2_init(&ctx);
@@ -20,7 +20,8 @@ int main(int argc, char *argv[])
 	ret = stpm2_get_random(&ctx, random_bytes, NUM_RANDOM_BYTES);
 	if (ret < 0) {
 		LOG_ERROR("stpm2_get_random() failed");
-		return 1;
+		ret = 1;
+		goto cleanup;
 	}
 
 	printf("Random bytes: \n");
@@ -29,12 +30,13 @@ int main(int argc, char *argv[])
 	}
 	printf("\n");
 
+cleanup:
 	ret = stpm2_free(&ctx);
 	if (ret < 0) {
 		LOG_ERROR("stpm2_free() failed");
-		return 1;
+		ret = 1;
 	}
 
-	return 0;
+	return ret;
 }
 

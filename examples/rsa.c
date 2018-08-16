@@ -6,7 +6,7 @@
 int main(int argc, char *argv[])
 {
 	stpm2_context ctx;
-	int ret;
+	int ret = 0;
 
 	ret = stpm2_init(&ctx);
 	if (ret < 0) {
@@ -24,7 +24,7 @@ int main(int argc, char *argv[])
 	ret = stpm2_export_pubkey_pem(&ctx, "/tmp/pubkey.pem");
 	if (ret < 0) {
 		LOG_ERROR("stpm2_export_pubkey_pem() failed");
-		ret = -1;
+		ret = 1;
 		goto cleanup;
 	}
 
@@ -32,7 +32,7 @@ cleanup:
 	ret = stpm2_free(&ctx);
 	if (ret < 0) {
 		LOG_ERROR("stpm2_free() failed");
-		return 1;
+		ret = 1;
 	}
 
 	return ret;
