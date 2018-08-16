@@ -11,8 +11,8 @@
 #include <tpm2_utils.h>
 #include <tpm2_error.h>
 
-#include <stpm2.h>
-#include <stpm2_log.h>
+#include "stpm2.h"
+#include "stpm2_log.h"
 
 static int init_tcit(stpm2_context *ctx)
 {

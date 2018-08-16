@@ -2,7 +2,7 @@
 #include <stdarg.h>
 #include <time.h>
 
-#include <stpm2_log.h>
+#include "stpm2_log.h"
 
 static stpm2_log_level current_level = STPM2_LOG_LEVEL_TRACE;
 
