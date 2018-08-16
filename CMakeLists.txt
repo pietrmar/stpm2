@@ -10,6 +10,7 @@ add_library(
 	stpm2
 	src/stpm2.c
 	src/stpm2_log.c
+	src/stpm2_base64.c
 	src/imported/tpm2-tools/tpm2_error.c
 )
 set_property(TARGET stpm2 PROPERTY C_STANDARD 99)
