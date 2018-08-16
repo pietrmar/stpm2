@@ -15,7 +15,7 @@
 #include "stpm2_log.h"
 #include "stpm2_base64.h"
 
-static int init_tcit(stpm2_context *ctx)
+static int init_tcti(stpm2_context *ctx)
 {
 	TRACE_ENTER();
 
@@ -46,7 +46,7 @@ static int init_tcit(stpm2_context *ctx)
 
 	if (!infofn) {
 		LOG_ERROR("Could not find synbol %s in %s\n", TSS2_TCTI_INFO_SYMBOL, tcti_so);
-		return -1;
+		goto err_clean_dlopen;
 	}
 
 	const TSS2_TCTI_INFO *info = infofn();
@@ -56,24 +56,53 @@ static int init_tcit(stpm2_context *ctx)
 	TSS2_RC ret = init(NULL, &size, NULL);
 	if (ret != TPM2_RC_SUCCESS) {
 		LOG_ERROR("tcti init failed with %s", tpm2_error_str(ret));
-		return -1;
+		goto err_clean_dlopen;
 	}
 
 	ctx->tcti_ctx = (TSS2_TCTI_CONTEXT *)calloc(1, size);
 	if (ctx->tcti_ctx == NULL) {
 		LOG_ERROR("Failed to allocate tcti_ctx");
-		return -1;
+		goto err_clean_dlopen;
 	}
 
 	ret = init(ctx->tcti_ctx, &size, NULL);
 	if (ret != TPM2_RC_SUCCESS) {
 		LOG_ERROR("tcti init call failed %s", tpm2_error_str(ret));
-		return -1;
+		goto err_clean_tcti;
 	}
 
 	TRACE_LEAVE();
 	return 0;
+
+err_clean_tcti:
+	free(ctx->tcti_ctx);
+	ctx->tcti_ctx = NULL;
+err_clean_dlopen:
+	dlclose(ctx->tcti_so_handle);
+	ctx->tcti_so_handle = NULL;
+	return -1;
 }
+
+static int free_tcti(stpm2_context *ctx)
+{
+	TRACE_ENTER();
+
+	int ret = 0;
+
+	Tss2_Tcti_Finalize(ctx->tcti_ctx);
+	free(ctx->tcti_ctx);
+	ctx->tcti_ctx = NULL;
+
+	if (dlclose(ctx->tcti_so_handle) != 0) {
+		LOG_ERROR("dlclose() failed");
+		ret = -1;
+	}
+	ctx->tcti_so_handle = NULL;
+
+	TRACE_LEAVE();
+	return ret;
+}
+
 
 #define TSS2_CHECKED_CALL(__fn__, ...) do { \
 		TSS2_RC ret = __fn__(__VA_ARGS__); \
@@ -231,8 +260,9 @@ int stpm2_init(stpm2_context *ctx)
 		return -1;
 	}
 
-	if (init_tcit(ctx) < 0) {
+	if (init_tcti(ctx) < 0) {
 		LOG_ERROR("init_tcit() failed");
+		free(ctx->sys_ctx);
 		return -1;
 	}
 
@@ -242,23 +272,27 @@ int stpm2_init(stpm2_context *ctx)
 	ret = TSS2_RETRY_EXP(Tss2_Sys_Startup(ctx->sys_ctx, TPM2_SU_CLEAR));
 	if (ret != TPM2_RC_SUCCESS && ret != TPM2_RC_INITIALIZE) {
 		LOG_ERROR("Tss2_Sys_Startup() failed with %s", tpm2_error_str(ret));
-		return -1;
+		goto err_free;
 	}
 
 	/* Flush all objects to have a clean state */
 	if (stpm2_flush_all(ctx) < 0) {
 		LOG_ERROR("stpm2_flush_all() failed");
-		return -1;
+		goto err_free;
 	}
 
 	/* Always create a primary key */
 	if (stpm2_create_primary(ctx) < 0) {
 		LOG_ERROR("Failed to create primary key");
-		return -1;
+		goto err_free;
 	}
 
 	TRACE_LEAVE();
 	return 0;
+
+err_free:
+	stpm2_free(ctx);
+	return -1;
 }
 
 int stpm2_free(stpm2_context *ctx)
@@ -283,12 +317,9 @@ int stpm2_free(stpm2_context *ctx)
 	free(ctx->sys_ctx);
 	ctx->sys_ctx = NULL;
 
-	Tss2_Tcti_Finalize(ctx->tcti_ctx);
-	free(ctx->tcti_ctx);
-	ctx->tcti_ctx = NULL;
-
-	if (dlclose(ctx->tcti_so_handle) != 0) {
-		LOG_ERROR("dlclose() failed");
+	ret = free_tcti(ctx);
+	if (ret < 0) {
+		LOG_ERROR("free_tcti() failed");
 		ret = -1;
 	}
 	ctx->tcti_so_handle = NULL;
