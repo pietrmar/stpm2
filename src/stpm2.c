@@ -444,9 +444,27 @@ int stpm2_export_pubkey_pem(stpm2_context *ctx, const char *path)
 		return -1;
 	}
 
-	fwrite(openssl_begin_pubkey, 1, strlen(openssl_begin_pubkey), f);
-	fwrite(pemkey_b64, 1, pemsize_b64, f);
-	fwrite(openssl_end_pubkey, 1, strlen(openssl_end_pubkey), f);
+	size_t fret;
+	fret = fwrite(openssl_begin_pubkey, 1, strlen(openssl_begin_pubkey), f);
+	if (fret != strlen(openssl_begin_pubkey)) {
+		LOG_ERROR("failed writing to file %s", path);
+		free(pemkey_b64);
+		return -1;
+	}
+
+	fret = fwrite(pemkey_b64, 1, pemsize_b64, f);
+	if (fret != pemsize_b64) {
+		LOG_ERROR("failed writing to file %s", path);
+		free(pemkey_b64);
+		return -1;
+	}
+	free(pemkey_b64);
+
+	fret = fwrite(openssl_end_pubkey, 1, strlen(openssl_end_pubkey), f);
+	if (fret != strlen(openssl_end_pubkey)) {
+		LOG_ERROR("failed writing to file %s", path);
+		return -1;
+	}
 	fclose(f);
 
 	TRACE_LEAVE();
