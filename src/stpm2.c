@@ -334,6 +334,7 @@ static TPMI_ALG_HASH stpm2_to_tpmi_alg(stpm2_hash_alg alg)
 	}
 }
 
+/* TODO: only return 0 or -1 here and use a size_t output parameter */
 int stpm2_hash(stpm2_context *ctx, stpm2_hash_alg alg, const uint8_t *buf, size_t size, uint8_t *outbuf, size_t outsize)
 {
 	TRACE_ENTER();
