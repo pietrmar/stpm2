@@ -429,7 +429,7 @@ int stpm2_export_pubkey_pem(stpm2_context *ctx, const char *path)
 	TRACE_ENTER();
 
 	if (ctx->current_rsa_key.handle == 0) {
-		LOG_ERROR("no key is present in context, use stpm2_create_rsa_2048() od stpm2_load_key()");
+		LOG_ERROR("no key is present in context, use stpm2_create_rsa_2048() or stpm2_load_key()");
 		return -1;
 	}
 
