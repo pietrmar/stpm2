@@ -8,6 +8,7 @@
 
 #include <tss2/tss2_sys.h>
 #include <tss2/tss2_tpm2_types.h>
+#include <tss2/tss2_mu.h>
 #include <tpm2_utils.h>
 #include <tpm2_error.h>
 
@@ -503,23 +504,149 @@ int stpm2_export_pubkey_pem(stpm2_context *ctx, const char *path)
 }
 
 
+/*
+ * TODO: in case some of the marshalling functions fail we will have a partly written file, we should fix this.
+ * TODO: there is too much boilerplate code, maybe write some nice macros
+ */
 int stpm2_export_key(stpm2_context *ctx, const char *path)
 {
+	TRACE_ENTER();
+
 	if (ctx->current_rsa_key.handle == 0) {
 		LOG_ERROR("no key is present in context, use stpm2_create_rsa_2048() or stpm2_load_key()");
 		return -1;
 	}
 
+	/* Write the header */
+	FILE *f = fopen(path, "w");
+	if (f == NULL) {
+		LOG_ERROR("Could not open file %s for writing: %s", path, strerror(errno));
+		return -1;
+	}
+
+	size_t fret = 0;
+	fret = fwrite("STPM2", 1, 5, f);
+	if (fret != 5) {
+		LOG_ERROR("failed writing to file %s", path);
+		fclose(f);
+		return -1;
+	}
+	size_t offset = 0;
+
+	/* Write the public part */
+	uint8_t pub_buffer[sizeof(ctx->current_rsa_key.pub)] = { 0 };
+	TSS2_RC rc = Tss2_MU_TPM2B_PUBLIC_Marshal(&ctx->current_rsa_key.pub, pub_buffer, sizeof(pub_buffer), &offset);
+	if (rc != TSS2_RC_SUCCESS) {
+		LOG_ERROR("Tss2_MU_TPM2B_PUBLIC_Marshal() failed with %s", tpm2_error_str(rc));
+		fclose(f);
+		return -1;
+	}
+	fret = fwrite(pub_buffer, 1, offset, f);
+	if (fret != offset) {
+		LOG_ERROR("failed writing to file %s", path);
+		fclose(f);
+		return -1;
+	}
+
+	/* Write the private part */
+	uint8_t priv_buffer[sizeof(ctx->current_rsa_key.priv)] = { 0 };
+	rc = Tss2_MU_TPM2B_PRIVATE_Marshal(&ctx->current_rsa_key.priv, priv_buffer, sizeof(priv_buffer), &offset);
+	if (rc != TSS2_RC_SUCCESS) {
+		LOG_ERROR("Tss2_MU_TPM2B_PRIVATE_Marshal() failed with %s", tpm2_error_str(rc));
+		fclose(f);
+		return -1;
+	}
+	fret = fwrite(priv_buffer, 1, offset, f);
+	if (fret != offset) {
+		LOG_ERROR("failed writing to file %s", path);
+		fclose(f);
+		return -1;
+	}
+
+	fclose(f);
+
+	TRACE_LEAVE();
 	return 0;
 }
 
 int stpm2_load_key(stpm2_context *ctx, const char *path)
 {
+	TRACE_ENTER();
+
 	if (ctx->current_rsa_key.handle != 0) {
 		LOG_ERROR("a key is already loaded, please call stpm2_unload_key() first");
 		return -1;
 	}
 
+	FILE *f = fopen(path, "r");
+	if (f == NULL) {
+		LOG_ERROR("Could not open file %s for reading: %s", path, strerror(errno));
+		return -1;
+	}
+
+	size_t fret = 0;
+	char magic_buffer[5] = { 0 };
+	size_t offset = 0;
+
+	fret = fread(magic_buffer, 1, 5, f);
+	if (fret != 5 || (strncmp(magic_buffer, "STPM2", 5) != 0)) {
+		LOG_ERROR("Could not read magic header from file %s", path);
+		fclose(f);
+		return -1;
+	}
+
+	/* Read public part */
+	uint8_t pub_buffer[sizeof(ctx->current_rsa_key.pub)] = { 0 };
+	fret = fread(pub_buffer, 1, sizeof(pub_buffer), f);
+	if (fret != sizeof(pub_buffer)) {
+		/* TODO: check ferror() and feof() */
+		LOG_WARN("Short or failed read from file %s, tried to read %zu, got %zu", path, sizeof(pub_buffer), fret);
+	}
+
+	TSS2_RC rc = Tss2_MU_TPM2B_PUBLIC_Unmarshal(pub_buffer, sizeof(pub_buffer), &offset, &ctx->current_rsa_key.pub);
+	if (rc != TSS2_RC_SUCCESS) {
+		LOG_ERROR("Tss2_MU_TPM2B_PUBLIC_Unmarshal() failed with %s", tpm2_error_str(rc));
+		fclose(f);
+		return -1;
+	}
+
+	/* Read private part */
+	/* Reposition file pointer at start of new section */
+	fseek(f, offset + 5, SEEK_SET);
+	uint8_t priv_buffer[sizeof(ctx->current_rsa_key.priv)] = { 0 };
+	fret = fread(priv_buffer, 1, sizeof(priv_buffer), f);
+	if (fret != sizeof(priv_buffer)) {
+		/* TODO: check ferror() and feof() */
+		LOG_WARN("Short or failed read from file %s, tried to read %zu, got %zu", path, sizeof(pub_buffer), fret);
+	}
+	rc = Tss2_MU_TPM2B_PRIVATE_Unmarshal(priv_buffer, sizeof(priv_buffer), &offset, &ctx->current_rsa_key.priv);
+	if (rc != TSS2_RC_SUCCESS) {
+		LOG_ERROR("Tss2_MU_TPM2B_PRIVATE_Unmarshal() failed with %s", tpm2_error_str(rc));
+		fclose(f);
+		return -1;
+	}
+	fclose(f);
+
+	TSS2L_SYS_AUTH_COMMAND sessions_cmd = {
+		.count = 1,
+		.auths = {{ .sessionHandle = TPM2_RS_PW }},
+	};
+
+	TSS2L_SYS_AUTH_RESPONSE sessions_rsp;
+
+	LOG_DEBUG("Loading new key");
+	TSS2_CHECKED_CALL_RETRY(Tss2_Sys_Load,
+				ctx->sys_ctx,
+				ctx->primary_handle,
+				&sessions_cmd,
+				&ctx->current_rsa_key.priv,
+				&ctx->current_rsa_key.pub,
+				&ctx->current_rsa_key.handle,
+				NULL,
+				&sessions_rsp);
+	LOG_INFO("New key handle is 0x%X", ctx->current_rsa_key.handle);
+
+	TRACE_LEAVE();
 	return 0;
 }
 
