@@ -50,3 +50,8 @@ add_executable(example_rsa_keys examples/rsa_keys.c)
 set_property(TARGET example_rsa_keys PROPERTY C_STANDARD 99)
 target_include_directories(example_rsa_keys PRIVATE ${STPM2_INCLUDE_DIR})
 target_link_libraries(example_rsa_keys stpm2)
+
+add_executable(example_openssl examples/openssl.c)
+set_property(TARGET example_openssl PROPERTY C_STANDARD 99)
+target_include_directories(example_openssl PRIVATE ${STPM2_INCLUDE_DIR})
+target_link_libraries(example_openssl stpm2)
