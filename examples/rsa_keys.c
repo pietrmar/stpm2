@@ -70,6 +70,26 @@ int main(int argc, char *argv[])
 		goto cleanup;
 	}
 
+	const char *message = "This is a TEST!";
+	LOG_INFO("Encrypting message: \"%s\"", message);
+
+	uint8_t encrypted_data[STPM2_RSA_ENC_MESSAGE_SIZE] = { 0 };
+	ret = stpm2_rsa_encrypt(&ctx, (uint8_t *)message, strlen(message) + 1, encrypted_data, sizeof(encrypted_data));
+	if (ret < 0) {
+		LOG_ERROR("stpm2_rsa_encrypt() failed");
+		ret = 1;
+		goto cleanup;
+	}
+
+	char decrypted_message[STPM2_RSA_ENC_MESSAGE_SIZE] = { 0 };
+	ret = stpm2_rsa_decrypt(&ctx, encrypted_data, sizeof(encrypted_data), (uint8_t *)decrypted_message, sizeof(decrypted_message), NULL);
+	if (ret < 0) {
+		LOG_ERROR("stpm2_rsa_decrypt() failed");
+		ret = 1;
+		goto cleanup;
+	}
+	LOG_INFO("Decrypted message: \"%s\"", decrypted_message);
+
 	/*
 	 * At this point the pubkey and the full key have been re-exported,
 	 * the checksums should be the same.
