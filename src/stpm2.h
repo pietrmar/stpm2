@@ -5,6 +5,8 @@
 
 #include <tss2/tss2_sys.h>
 
+#define STPM2_RSA_ENC_MESSAGE_SIZE (2048 / 8)
+
 typedef struct {
 	TSS2_SYS_CONTEXT	*sys_ctx;
 	TSS2_TCTI_CONTEXT	*tcti_ctx;
@@ -39,5 +41,8 @@ int stpm2_create_rsa_2048(stpm2_context *ctx);
 int stpm2_export_pubkey_pem(stpm2_context *ctx, const char *path);
 int stpm2_export_key(stpm2_context *ctx, const char *path);
 int stpm2_load_key(stpm2_context *ctx, const char *path);
+
+int stpm2_rsa_encrypt(stpm2_context *ctx, uint8_t *in, size_t insize, uint8_t *out, size_t outsize);
+int stpm2_rsa_decrypt(stpm2_context *ctx, uint8_t *in, size_t insize, uint8_t *out, size_t outsize, size_t *actual_size);
 
 #endif /* __STPM2_H__ */

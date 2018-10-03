@@ -730,6 +730,103 @@ int stpm2_create_rsa_2048(stpm2_context *ctx)
 	return 0;
 }
 
+int stpm2_rsa_encrypt(stpm2_context *ctx, uint8_t *in, size_t insize, uint8_t *out, size_t outsize)
+{
+	TRACE_ENTER();
+	if (ctx->current_rsa_key.handle == 0) {
+		LOG_ERROR("no key is present in context, use stpm2_create_rsa_2048() or stpm2_load_key()");
+		return -1;
+	}
+
+	if (insize > (STPM2_RSA_ENC_MESSAGE_SIZE - 11)) {
+		LOG_ERROR("message size is too long, got: %zu max: %d\n", insize, (STPM2_RSA_ENC_MESSAGE_SIZE - 11));
+		return -1;
+	}
+
+	if (outsize < STPM2_RSA_ENC_MESSAGE_SIZE) {
+		LOG_ERROR("output buffer is too small, got: %zu required: %d\n", outsize, STPM2_RSA_ENC_MESSAGE_SIZE);
+		return -1;
+	}
+
+	TPM2B_PUBLIC_KEY_RSA input_message;
+	input_message.size = insize;
+	memcpy(input_message.buffer, in, insize);
+
+	TPMT_RSA_DECRYPT in_scheme;
+	in_scheme.scheme = TPM2_ALG_RSAES;
+
+	TPM2B_PUBLIC_KEY_RSA output_data;
+	TPM2B_DATA label = { .size = 0, };
+
+	TSS2_CHECKED_CALL_RETRY(Tss2_Sys_RSA_Encrypt,
+				ctx->sys_ctx,
+				ctx->current_rsa_key.handle,
+				NULL,
+				&input_message,
+				&in_scheme,
+				&label,
+				&output_data,
+				NULL);
+
+	LOG_DEBUG("encrypted %zu bytes, got %u bytes back", insize, output_data.size);
+	if (output_data.size > outsize) {
+		LOG_ERROR("encrypted data size is larger than the output buffer");
+		return -1;
+	}
+
+	memcpy(out, output_data.buffer, output_data.size);
+
+	TRACE_LEAVE();
+	return 0;
+}
+
+int stpm2_rsa_decrypt(stpm2_context *ctx, uint8_t *in, size_t insize, uint8_t *out, size_t outsize, size_t *actual_size)
+{
+	TRACE_ENTER();
+	if (ctx->current_rsa_key.handle == 0) {
+		LOG_ERROR("no key is present in context, use stpm2_create_rsa_2048() or stpm2_load_key()");
+		return -1;
+	}
+
+	TSS2L_SYS_AUTH_COMMAND sessions_cmd = {
+		.count = 1,
+		.auths = {{ .sessionHandle = TPM2_RS_PW }},
+	};
+
+	TPM2B_PUBLIC_KEY_RSA input_data;
+	input_data.size = insize;
+	memcpy(input_data.buffer, in, insize);
+
+	TPMT_RSA_DECRYPT in_scheme;
+	in_scheme.scheme = TPM2_ALG_RSAES;
+
+	TPM2B_PUBLIC_KEY_RSA output_message;
+	TPM2B_DATA label = { .size = 0, };
+
+	TSS2_CHECKED_CALL_RETRY(Tss2_Sys_RSA_Decrypt,
+				ctx->sys_ctx,
+				ctx->current_rsa_key.handle,
+				&sessions_cmd,
+				&input_data,
+				&in_scheme,
+				&label,
+				&output_message,
+				NULL);
+
+	LOG_DEBUG("decrypted %zu bytes, got %u bytes back", insize, output_message.size);
+	if (output_message.size > outsize) {
+		LOG_ERROR("decrypted data size is larger than the output buffer");
+		return -1;
+	}
+	memcpy(out, output_message.buffer, output_message.size);
+
+	if (actual_size != NULL) {
+		*actual_size = output_message.size;
+	}
+
+	TRACE_LEAVE();
+	return 0;
+}
 
 #undef TSS2_CHECKED_CALL
 #undef TSS2_CHECKED_CALL_RETRY
